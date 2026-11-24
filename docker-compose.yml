@@ -1,0 +1,67 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: development
+    container_name: car-dealers-app
+    volumes:
+      - .:/var/www/html
+      - ./docker/php/xdebug.ini:/usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+    environment:
+      PHP_IDE_CONFIG: "serverName=localhost"
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DOCKER_DB_DATABASE:?set DOCKER_DB_DATABASE in .env}
+      DB_USERNAME: ${DOCKER_DB_USERNAME:?set DOCKER_DB_USERNAME in .env}
+      DB_PASSWORD: ${DOCKER_DB_PASSWORD:?set DOCKER_DB_PASSWORD in .env}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - car-dealers
+
+  web:
+    image: nginx:latest
+    container_name: car-dealers-web
+    ports:
+      - "8080:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - car-dealers
+
+  db:
+    image: mysql:8.0
+    container_name: car-dealers-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DOCKER_DB_ROOT_PASSWORD:?set DOCKER_DB_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${DOCKER_DB_DATABASE:?set DOCKER_DB_DATABASE in .env}
+      MYSQL_USER: ${DOCKER_DB_USERNAME:?set DOCKER_DB_USERNAME in .env}
+      MYSQL_PASSWORD: ${DOCKER_DB_PASSWORD:?set DOCKER_DB_PASSWORD in .env}
+    ports:
+      # 3307 on the host to avoid clashing with a local (XAMPP) MySQL on 3306.
+      - "3307:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      # $$ = literal $, so the password is read inside the container, not written here.
+      test: [ "CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - car-dealers
+
+volumes:
+  db-data:
+
+networks:
+  car-dealers:
+    driver: bridge
